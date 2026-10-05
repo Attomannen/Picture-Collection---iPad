@@ -14,7 +14,7 @@ let package = Package(
             bundleIdentifier: "com.example.picboard",
             displayVersion: "0.1",
             bundleVersion: "1",
-            appIcon: .placeholder(icon: .photo),
+            appIcon: .placeholder(icon: .camera),
             accentColor: .presetColor(.blue),
             supportedDeviceFamilies: [.pad, .phone],
             supportedInterfaceOrientations: [
