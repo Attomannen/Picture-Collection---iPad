@@ -1,0 +1,33 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcode version
+        run: xcodebuild -version
+
+      - name: Unit tests (core + .pur format)
+        shell: bash
+        run: |
+          xcodebuild test \
+            -scheme PicBoardCore \
+            -destination 'platform=macOS' \
+            -skipPackagePluginValidation \
+            | tail -n 80
+
+      - name: Build iPad app
+        shell: bash
+        run: |
+          xcodebuild build \
+            -scheme PicBoard \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            | tail -n 80

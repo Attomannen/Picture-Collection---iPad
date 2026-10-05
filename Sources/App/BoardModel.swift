@@ -43,6 +43,23 @@ final class BoardModel: ObservableObject {
         try? data.write(to: url, options: .atomic)
     }
 
+    // MARK: PureRef export
+
+    /// The board as a PureRef `.pur` file. PureRef only reads PNG/JPEG, so other
+    /// formats (e.g. HEIC from Photos) are converted to PNG first.
+    func makePURData() throws -> Data {
+        var exportAssets: [String: Data] = [:]
+        for asset in Set(board.items.map(\.asset)) {
+            guard let data = assets[asset] else { continue }
+            if ImageInfo.probe(data) != nil {
+                exportAssets[asset] = data
+            } else if let png = image(for: asset)?.pngData() {
+                exportAssets[asset] = png
+            }
+        }
+        return try PUR.write(board: board, assets: exportAssets)
+    }
+
     // MARK: Images
 
     func image(for asset: String) -> UIImage? {

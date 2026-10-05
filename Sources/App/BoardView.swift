@@ -8,6 +8,8 @@ struct BoardView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var importingFiles = false
+    @State private var exportDocument: PURDocument?
+    @State private var exportError: String?
 
     init(model: BoardModel) { _model = StateObject(wrappedValue: model) }
 
@@ -24,6 +26,12 @@ struct BoardView: View {
         .onChange(of: pickerItems) { _, items in loadPicked(items) }
         .onChange(of: scenePhase) { _, phase in if phase != .active { model.saveNow() } }
         .onDisappear { model.saveNow() }
+        .fileExporter(isPresented: Binding(get: { exportDocument != nil }, set: { if !$0 { exportDocument = nil } }),
+                      document: exportDocument, contentType: .pur,
+                      defaultFilename: model.url.deletingPathExtension().lastPathComponent) { _ in }
+        .alert("Couldn't export", isPresented: Binding(get: { exportError != nil }, set: { if !$0 { exportError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(exportError ?? "") }
         .fileImporter(isPresented: $importingFiles, allowedContentTypes: [.image],
                       allowsMultipleSelection: true) { result in
             guard case .success(let urls) = result else { return }
@@ -83,6 +91,10 @@ struct BoardView: View {
             }
             Button { importingFiles = true } label: { Label("Files", systemImage: "folder") }
             Button { model.paste() } label: { Label("Paste", systemImage: "doc.on.clipboard") }
+            Button {
+                do { exportDocument = PURDocument(data: try model.makePURData()) }
+                catch { exportError = "\(error)" }
+            } label: { Label("Export .pur", systemImage: "square.and.arrow.up") }
             Button { model.fitAll() } label: { Label("Fit", systemImage: "arrow.up.left.and.down.right.magnifyingglass") }
             Button { model.undo() } label: { Label("Undo", systemImage: "arrow.uturn.backward") }
                 .disabled(!model.canUndo)
@@ -129,5 +141,16 @@ private struct ItemView: View {
             .position(x: item.x * board.zoom + board.offsetX,
                       y: item.y * board.zoom + board.offsetY)
             .allowsHitTesting(false)
+    }
+}
+
+struct PURDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.pur] }
+    var data: Data
+
+    init(data: Data) { self.data = data }
+    init(configuration: ReadConfiguration) throws { data = configuration.file.regularFileContents ?? Data() }
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
     }
 }

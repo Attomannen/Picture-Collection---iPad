@@ -4,6 +4,7 @@ import PicBoardCore
 
 extension UTType {
     static let picboard = UTType(filenameExtension: "picboard", conformingTo: .data) ?? .data
+    static let pur = UTType(filenameExtension: "pur", conformingTo: .data) ?? .data
 }
 
 /// Lists the boards stored in the app's Documents/Boards folder.
@@ -51,7 +52,14 @@ final class Library: ObservableObject {
         let access = source.startAccessingSecurityScopedResource()
         defer { if access { source.stopAccessingSecurityScopedResource() } }
         let dest = uniqueURL(base: source.deletingPathExtension().lastPathComponent)
-        try? FileManager.default.copyItem(at: source, to: dest)
+        if source.pathExtension.lowercased() == "pur" {
+            if let data = try? Data(contentsOf: source), let result = try? PUR.read(data),
+               let archive = try? BoardArchive.encode(board: result.board, assets: result.assets) {
+                try? archive.write(to: dest)
+            }
+        } else {
+            try? FileManager.default.copyItem(at: source, to: dest)
+        }
         reload()
     }
 
@@ -89,11 +97,11 @@ struct LibraryView: View {
             }
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
-                    Button { importing = true } label: { Label("Import", systemImage: "square.and.arrow.down") }
+                    Button { importing = true } label: { Label("Import .picboard / .pur", systemImage: "square.and.arrow.down") }
                     Button { path.append(library.create()) } label: { Label("New", systemImage: "plus") }
                 }
             }
-            .fileImporter(isPresented: $importing, allowedContentTypes: [.picboard, .data]) { result in
+            .fileImporter(isPresented: $importing, allowedContentTypes: [.picboard, .pur, .data]) { result in
                 if case .success(let url) = result { library.importFile(url) }
             }
             .onChange(of: path) { _, _ in library.reload() }

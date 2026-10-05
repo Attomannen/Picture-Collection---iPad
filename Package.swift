@@ -7,6 +7,7 @@ let package = Package(
     name: "PicBoard",
     platforms: [.iOS("17.0")],
     products: [
+        .library(name: "PicBoardCore", targets: ["PicBoardCore"]),
         .iOSApplication(
             name: "PicBoard",
             targets: ["App"],
