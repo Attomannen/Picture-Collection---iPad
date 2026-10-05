@@ -17,11 +17,14 @@ jobs:
       - name: Unit tests (core + .pur format)
         shell: bash
         run: |
+          UDID=$(xcrun simctl list devices available | grep -m1 "iPad" | grep -oE '[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}')
+          echo "Simulator: $UDID"
           xcodebuild test \
-            -scheme PicBoardCore \
-            -destination 'platform=macOS' \
-            -skipPackagePluginValidation \
-            | tail -n 80
+            -scheme PicBoard-Package \
+            -destination "id=$UDID" \
+            -only-testing:CoreTests \
+            CODE_SIGNING_ALLOWED=NO \
+            | tail -n 120
 
       - name: Build iPad app
         shell: bash
