@@ -5,7 +5,8 @@
  Run this file once inside the Unreal Editor. It builds ONE master material, M_Master, with 266 artist-facing parameters
  (21 groups; 24 static switches that remove unused features, and their texture samples, from the shader) and 13 tiny
  placeholder textures that are the defaults of the texture slots. Nothing else is created.
- Needs Unreal Engine 5.x with Substrate OFF (Project Settings > Engine > Rendering): it drives the classic material pins.
+ Built for Unreal Engine 5.x and the classic material pins (Substrate off, the default); with Substrate on the engine converts
+ them, which has not been tested.
 
  WHAT THE MATERIAL DOES
    Layer stack, bottom to top:   Base > Wear > Vertex 1 > Vertex 2 > Vertex 3 > Dirt > Scratches > Top Coat
@@ -68,14 +69,14 @@
 
  READING THE CODE   1 configuration | 2 helpers | 3 graph-building mini-language | 4 parameter table (every name, default,
    range and tooltip) | 5 shader building blocks | 6 the master, one numbered block per stage | 7 placeholder textures | 8 main.
-   The finished graph is laid out in the same numbered blocks, each with a title comment.
+   The finished graph is laid out in the same numbered blocks; a small marker node above each block carries its title as a
+   comment (Python cannot draw comment boxes).
 ================================================================================
 """
 import math
 import os
 import struct
 import tempfile
-import textwrap
 import traceback
 import zlib
 
@@ -186,7 +187,7 @@ FALLBACK_INPUT_PINS = {
     "Add": ["A", "B"], "Subtract": ["A", "B"], "Multiply": ["A", "B"], "Divide": ["A", "B"],
     "Min": ["A", "B"], "Max": ["A", "B"], "AppendVector": ["A", "B"], "DotProduct": ["A", "B"], "CrossProduct": ["A", "B"],
     "LinearInterpolate": ["A", "B", "Alpha"], "Clamp": ["Input", "Min", "Max"],
-    "Power": ["Base", "Exponent"], "Desaturation": ["Input", "Fraction"],
+    "Power": ["Base", "Exp"], "Desaturation": ["Input", "Fraction"],
     "StaticSwitch": ["True", "False", "Value"], "TextureSample": ["UVs", "Tex"],
     "TextureSampleParameter2D": ["UVs", "Tex"], "BumpOffset": ["Coordinate", "Height", "HeightRatioInput"],
 }
@@ -277,11 +278,6 @@ SHEET_W = 16000         # a row of blocks wraps once it is wider than this
 MAX_COL_H = 3400        # a column taller than this continues in a new column
 
 
-# Properties whose change notification is kept, because the engine does bookkeeping when they change (parameter registry,
-# sampler type of a texture). They are written while the material has no outputs yet, so the notification is cheap.
-NOTIFIED_PROPS = ("parameter_name", "texture")
-
-
 class Graph:
     """Wraps the Material and everything created inside it."""
 
@@ -291,18 +287,17 @@ class Graph:
         self.textures = textures or {}            # placeholder key -> Texture asset
         self.nodes = []
         self.section_name = "Main"
-        self.section_color = {}
         self.section_order = []
+        self.labels = []                          # the marker node of every block (see _label_node)
         self.roots = []                           # nodes that feed a material output
         self._pcache = {}
         self._warned = set()
 
-    # --- sections (purely cosmetic: layout + header comments) ---------------
-    def section(self, name, color=None):
+    # --- sections (purely cosmetic: layout + a marker node per block) ---------
+    def section(self, name):
         self.section_name = name
         if name not in self.section_order:
             self.section_order.append(name)
-            self.section_color[name] = color
         return name
 
     # --- node creation ------------------------------------------------------
@@ -312,14 +307,13 @@ class Graph:
         if expr is None:
             raise BuildError("Engine refused to create MaterialExpression%s" % short)
         for k, v in (props or {}).items():
-            set_prop(expr, k, v, required=required_props, quiet=(k not in NOTIFIED_PROPS))
+            set_prop(expr, k, v, required=required_props, quiet=True)
         if desc:
             set_prop(expr, "desc", desc, required=False, quiet=True)
         node = Node(expr, short, self.section_name)
         node.desc_lines = (len(desc) // 32 + 1) if desc else 0
         if self.section_name not in self.section_order:
             self.section_order.append(self.section_name)
-            self.section_color.setdefault(self.section_name, None)
         self.nodes.append(node)
         return node
 
@@ -592,8 +586,8 @@ class Graph:
 
     # --- engine nodes with more than arithmetic in them ----------------------------
     def bump_offset(self, coordinate, height, ratio):
-        """Parallax: shifts `coordinate` along the view direction by height * ratio (pass height already centred on 0).
-        The engine node also subtracts ReferencePlane * (its own HeightRatio property, not the ratio pin), so the plane is 0."""
+        """Parallax: shifts `coordinate` along the view direction by height * ratio (pass the height already centred on 0).
+        The reference plane stays 0: older engines subtract ReferencePlane * the node's own HeightRatio property (not the ratio pin)."""
         node = self.add_node("BumpOffset", {"reference_plane": 0.0})
         self.link(coordinate, node, 0)
         self.link(height, node, 1)
@@ -800,7 +794,7 @@ class Graph:
         return pos, col * COL_W, height
 
     def finish(self):
-        """Tile the sections as blocks (left to right, wrapping into rows) and put a title comment above each.
+        """Tile the sections as blocks (left to right, wrapping into rows) and put a marker node above each.
         Blocks follow the numbers in their titles ("01 | UV SETS", "02 | RGB MASK" ...), not the order they were built in."""
         by_section = {}
         for n in self.nodes:
@@ -818,22 +812,22 @@ class Graph:
                 n.x, n.y = cur_x + dx, cur_y + HEADER_H + dy
                 set_prop(n.expr, "material_expression_editor_x", int(n.x), required=False, quiet=True)
                 set_prop(n.expr, "material_expression_editor_y", int(n.y), required=False, quiet=True)
-            self._header_comment(sec, cur_x, cur_y)
+            self._label_node(sec, cur_x, cur_y)
             cur_x += w + BLOCK_GAP_X
             row_h = max(row_h, HEADER_H + h)
 
-    def _header_comment(self, text, x, y):
+    def _label_node(self, text, x, y):
+        """
+        Marks a block: a small unconnected Constant whose description is the block's title (a node's description is drawn as
+        the comment bubble above it). Python cannot create real comment boxes - a Comment expression made through
+        create_material_expression is drawn as a plain node, and editing its colour in Details would crash the editor.
+        """
         try:
-            c = unreal.MaterialEditingLibrary.create_material_expression(self.asset, expr_class("Comment"), int(x), int(y))
-            # the box keeps its default size (Python cannot resize it), so the title is wrapped to fit it
-            set_prop(c, "text", "\n".join(textwrap.fill(line, 30) for line in text.split("\n")), required=False, quiet=True)
-            set_prop(c, "font_size", 24, required=False, quiet=True)
-            set_prop(c, "desc", " ".join(text.split()), required=False, quiet=True)     # also readable if the engine draws it as a plain node
-            col = self.section_color.get(text)
-            if col is not None:
-                set_prop(c, "comment_color", linear_color(col), required=False, quiet=True)
-        except Exception as exc:                            # noqa: BLE001 - comments are cosmetic
-            warn("Could not add header comment '%s': %s" % (text, exc))
+            expr = unreal.MaterialEditingLibrary.create_material_expression(self.asset, expr_class("Constant"), int(x), int(y))
+            set_prop(expr, "desc", " - ".join(line.strip() for line in text.split("\n")), required=False, quiet=True)
+            self.labels.append(expr)
+        except Exception as exc:                            # noqa: BLE001 - labels are cosmetic
+            warn("Could not add the marker for block '%s': %s" % (text, exc))
 
 
 # ==============================================================================
@@ -1436,13 +1430,6 @@ def blend_layer(g, nops, below, layer, w, cover_flatten, use, edge=None):
 #               variation -> global grade -> wetness -> AO -> normal finish -> emissive,
 #               opacity -> debug view -> material outputs
 # ==============================================================================
-C_UV = (0.10, 0.28, 0.55, 1.0)
-C_MASK = (0.38, 0.18, 0.55, 1.0)
-C_VERTEX = (0.60, 0.30, 0.08, 1.0)
-C_LAYER = (0.50, 0.40, 0.08, 1.0)
-C_STACK = (0.15, 0.48, 0.20, 1.0)
-C_POST = (0.30, 0.30, 0.34, 1.0)
-C_OUT = (0.58, 0.14, 0.14, 1.0)
 
 
 def connect_property(g, prop_name, v, components):
@@ -1499,10 +1486,10 @@ def build_master(mat, textures, use_engine_functions):
 
     # ---- 1. UV SETS (+ parallax) -----------------------------------------------------------------
     # UV0 = tiling (texel-density) UVs, UV1 = unique (non-overlapping 0-1) UVs for the RGB mask.
-    g.section("05 | BASE LAYER", C_LAYER)
+    g.section("05 | BASE LAYER")
     for name in ("Base Rotation", "Base Tiling", "Base Offset", "Base ORMH Map"):
         P(name)                                         # created here, used by the parallax height below
-    g.section("01 | UV SETS + PARALLAX\nUV0 tiling, UV1 unique", C_UV)
+    g.section("01 | UV SETS + PARALLAX\nUV0 tiling, UV1 unique")
     uv0, uv1 = g.texcoord(0), g.texcoord(1)
     swap = P("Swap UV Channels")
     tile_raw = sw(swap, uv1, uv0)
@@ -1520,13 +1507,13 @@ def build_master(mat, textures, use_engine_functions):
     tiling_uv = sw(P("Use Parallax"), g.bump_offset(tiling_uv_flat, par_height, par_ratio), tiling_uv_flat)
 
     # ---- 2. RGB MASK -------------------------------------------------------------------------------
-    g.section("02 | RGB MASK (unique UV)\nR wear  G dirt  B scratch  A AO", C_MASK)
+    g.section("02 | RGB MASK (unique UV)\nR wear  G dirt  B scratch  A AO")
     mask_rgb = g.sample_param("Mask Texture", unique_uv)
     m_wear, m_dirt, m_scr = mask_rgb.mask("r"), mask_rgb.mask("g"), mask_rgb.mask("b")
     m_ao_raw = g.alpha_of(mask_rgb)
     ao_mask = sw(P("Use Baked AO"), m_ao_raw, 1.0)
 
-    g.section("03 | BREAKUP NOISE\nR wear  G dirt  B scratch / vertex / coat", C_MASK)
+    g.section("03 | BREAKUP NOISE\nR wear  G dirt  B scratch / vertex / coat")
     bk_tex = g.sample_param("Breakup Texture", tiling_uv * P("Breakup Tiling"))
     use_breakup = P("Use Mask Breakup")
     bk_wear = sw(use_breakup, bk_tex.mask("r"), 0.5)         # 0.5 = neutral (no erosion)
@@ -1535,7 +1522,7 @@ def build_master(mat, textures, use_engine_functions):
 
     # ---- 3. VERTEX COLOUR ----------------------------------------------------------------------------
     # Unpainted meshes read as white. Default: painting BLACK adds a layer (Mesh Paint: Paint Color black, Erase Color white).
-    g.section("04 | VERTEX PAINT\nR G B = layers 1-3, A = dirt", C_VERTEX)
+    g.section("04 | VERTEX PAINT\nR G B = layers 1-3, A = dirt")
     vc = g.vertex_color()
     white_adds = P("Vertex Paint White Adds")
 
@@ -1548,13 +1535,13 @@ def build_master(mat, textures, use_engine_functions):
     paint_a = painted(vc_alpha) if alpha_ok else g.const(0.0)
 
     # ---- 4. THE LAYER STACK (bottom -> top) ---------------------------------------------------------------
-    g.section("05 | BASE LAYER", C_LAYER)
+    g.section("05 | BASE LAYER")
     S = sample_layer(g, P, "Base", tiling_uv, is_base=True)
     S.normal = nops.flatten(S.normal, S.flatten)
 
-    g.section("06 | WEAR LAYER: sample", C_LAYER)
+    g.section("06 | WEAR LAYER: sample")
     wear = sample_layer(g, P, "Wear", tiling_uv)
-    g.section("06 | WEAR LAYER: weight + blend", C_STACK)
+    g.section("06 | WEAR LAYER: weight + blend")
     w_wear = reveal_weight(g, m_wear, P("Wear Softness"), wear.height, P("Wear Height Influence"), bk_wear,
                            P("Wear Breakup"), P("Wear Intensity"), P("Wear Invert")) * P("Wear Opacity")
     S = blend_layer(g, nops, S, wear, w_wear, P("Wear Cover Flatten"), P("Use Wear Layer"),
@@ -1563,17 +1550,17 @@ def build_master(mat, textures, use_engine_functions):
     w_vp = []
     for i, (paint, ch) in enumerate(((paint_r, "R"), (paint_g, "G"), (paint_b, "B")), start=1):
         label = "Vertex %d" % i
-        g.section("%02d | VERTEX LAYER %d (paint %s): sample" % (6 + i, i, ch), C_VERTEX)
+        g.section("%02d | VERTEX LAYER %d (paint %s): sample" % (6 + i, i, ch))
         lay = sample_layer(g, P, label, tiling_uv)
-        g.section("%02d | VERTEX LAYER %d: weight + blend" % (6 + i, i), C_STACK)
+        g.section("%02d | VERTEX LAYER %d: weight + blend" % (6 + i, i))
         w = reveal_weight(g, paint, P(label + " Softness"), lay.height, P(label + " Height Influence"), bk_b,
                           P(label + " Breakup")) * P(label + " Opacity")
         S = blend_layer(g, nops, S, lay, w, P(label + " Cover Flatten"), P("Use Vertex Layer %d" % i))
         w_vp.append(w)
 
-    g.section("10 | DIRT LAYER (mask G): sample", C_LAYER)
+    g.section("10 | DIRT LAYER (mask G): sample")
     dirt = sample_layer(g, P, "Dirt", tiling_uv)
-    g.section("10 | DIRT LAYER: weight + blend", C_STACK)
+    g.section("10 | DIRT LAYER: weight + blend")
     dirt_vertex = sw(P("Use Vertex Alpha Dirt"), paint_a * P("Vertex Alpha Dirt Strength"), 0.0)
     dirt_painted = g.lerp(m_dirt, m_dirt.one_minus(), g.floor(P("Dirt Invert") + 0.5))      # only the painted mask is inverted
     dirt_mask = (dirt_painted + (1.0 - ao_mask) * P("Dirt AO Boost") + dirt_vertex).sat()
@@ -1581,7 +1568,7 @@ def build_master(mat, textures, use_engine_functions):
                            P("Dirt Breakup"), P("Dirt Intensity")) * P("Dirt Opacity")
     S = blend_layer(g, nops, S, dirt, w_dirt, P("Dirt Cover Flatten"), P("Use Dirt Layer"))
 
-    g.section("11 | SCRATCHES (mask B)", C_STACK)
+    g.section("11 | SCRATCHES (mask B)")
     w_scr = reveal_weight(g, m_scr, P("Scratch Softness"), None, None, bk_b, P("Scratch Breakup"),
                           P("Scratch Intensity"), P("Scratch Invert")) * P("Scratch Opacity")
     use_scr = P("Use Scratches")
@@ -1591,9 +1578,9 @@ def build_master(mat, textures, use_engine_functions):
                 sw(use_scr, g.lerp(S.metal, P("Scratch Metallic"), w_scr), S.metal),
                 S.ao, S.height)
 
-    g.section("12 | TOP COAT (dust, snow, moss): sample", C_LAYER)
+    g.section("12 | TOP COAT (dust, snow, moss): sample")
     coat = sample_layer(g, P, "Coat", tiling_uv)
-    g.section("12 | TOP COAT: slope + weight + blend", C_STACK)
+    g.section("12 | TOP COAT: slope + weight + blend")
     # Direction the coating falls from. Maths on parameters only: the engine folds it before the shader runs (free per pixel).
     el, az = P("Coat Elevation") / 360.0, P("Coat Azimuth") / 360.0
     ce, se, ca, sa = g.cosine(el), g.sine(el), g.cosine(az), g.sine(az)
@@ -1610,7 +1597,7 @@ def build_master(mat, textures, use_engine_functions):
     color, rough, metal, normal, height = S.color, S.rough, S.metal, S.normal, S.height
 
     # ---- 5. POST: macro variation, per-object variation -----------------------------------------------------
-    g.section("13 | MACRO + INSTANCE VARIATION", C_POST)
+    g.section("13 | MACRO + INSTANCE VARIATION")
     macro_scale = P("Macro Tiling")
     macro_uv = sw(P("Macro Uses World Space"),
                   g.world_position().mask("rg") * 0.01 * macro_scale,        # cm -> m
@@ -1634,7 +1621,7 @@ def build_master(mat, textures, use_engine_functions):
     color = sw(P("Use Instance Variation"), color_inst, color)
 
     # ---- 6. GLOBAL GRADE -----------------------------------------------------------------------------------------
-    g.section("14 | GLOBAL GRADE\nhue, saturation, contrast, tint", C_POST)
+    g.section("14 | GLOBAL GRADE\nhue, saturation, contrast, tint")
     color = hue_shift(g, color, P("Global Hue Shift"))
     color = saturate_color(g, color, P("Global Saturation"))
     color = contrast(g, color, P("Global Contrast"))
@@ -1642,7 +1629,7 @@ def build_master(mat, textures, use_engine_functions):
     color = color * g.lerp(1.0, ao_mask, P("AO Color Influence"))
 
     # ---- 7. WETNESS + PUDDLES ----------------------------------------------------------------------------------------
-    g.section("15 | WETNESS + PUDDLES\ndamp surface, standing water in the low height", C_POST)
+    g.section("15 | WETNESS + PUDDLES\ndamp surface, standing water in the low height")
     wet = P("Wetness")
     nonmetal = metal.one_minus()                                                  # water darkens dielectrics, not bare metal
     color_wet = saturate_color(g, color * (1.0 - P("Wet Darken") * wet * nonmetal), g.lerp(1.0, P("Wet Saturation"), wet))
@@ -1659,7 +1646,7 @@ def build_master(mat, textures, use_engine_functions):
 
     # ---- 8. FINAL LIMITS ---------------------------------------------------------------------------------------------
     # Applied last, so nothing upstream (saturation boosts, wetness ...) can leave the plausible range.
-    g.section("16 | FINAL LIMITS\nalbedo clamp, roughness, AO", C_POST)
+    g.section("16 | FINAL LIMITS\nalbedo clamp, roughness, AO")
     color = g.vmax(g.vmin(color, P("Albedo Max")), P("Albedo Min"))
     rough = g.vmax((rough + P("Global Roughness Offset")).sat(), P("Roughness Floor"))
     ao = S.ao * g.lerp(1.0, ao_mask, P("Mask AO Strength"))
@@ -1667,7 +1654,7 @@ def build_master(mat, textures, use_engine_functions):
     specular = P("Specular")
 
     # ---- 9. NORMAL FINISH ----------------------------------------------------------------------------------------------
-    g.section("17 | NORMAL FINISH\ndetail, intensity, puddles, distance", C_POST)
+    g.section("17 | NORMAL FINISH\ndetail, intensity, puddles, distance")
     detail = g.sample_param("Detail Normal Texture", tiling_uv * P("Detail Normal Tiling"))
     detail = normal_intensity(g, flip_green(g, detail, P("Detail Normal Flip Green")), P("Detail Normal Intensity"))
     detail_far = g.smoothstep(depth, P("Detail Fade Start"), P("Detail Fade End"))
@@ -1682,7 +1669,7 @@ def build_master(mat, textures, use_engine_functions):
     normal = g.normalize(normal)
 
     # ---- 10. EMISSIVE + OPACITY -------------------------------------------------------------------------------------------
-    g.section("18 | EMISSIVE + OPACITY", C_POST)
+    g.section("18 | EMISSIVE + OPACITY")
     emissive_tex = g.sample_param("Emissive Texture", unique_uv)
     pulse = 1.0 + P("Emissive Pulse Amount") * g.sine(g.time() * P("Emissive Pulse Speed"), 1.0)
     emissive = sw(P("Use Emissive"), emissive_tex * P("Emissive Color") * P("Emissive Intensity") * pulse,
@@ -1693,7 +1680,7 @@ def build_master(mat, textures, use_engine_functions):
     opacity = sw(P("Use Opacity Mask"), opacity_cut, 1.0)
 
     # ---- 11. DEBUG VIEW ---------------------------------------------------------------------------------------------------------
-    g.section("19 | DEBUG VIEW\nfree while switched off", C_POST)
+    g.section("19 | DEBUG VIEW\nfree while switched off")
 
     def v3(x):
         return g.broadcast(x, 3)
@@ -1721,7 +1708,7 @@ def build_master(mat, textures, use_engine_functions):
     dbg_on = P("Debug View")
 
     # ---- 12. OUTPUTS ------------------------------------------------------------------------------------------------------------------
-    g.section("20 | MATERIAL OUTPUTS", C_OUT)
+    g.section("20 | MATERIAL OUTPUTS")
     connect_property(g, "MP_BASE_COLOR", sw(dbg_on, g.vec3(0.0, 0.0, 0.0), color), 3)
     connect_property(g, "MP_METALLIC", sw(dbg_on, 0.0, metal), 1)
     connect_property(g, "MP_SPECULAR", sw(dbg_on, 0.0, specular), 1)
@@ -1904,15 +1891,15 @@ def report_statistics(mat):
 
 
 def check_substrate():
-    """M_Master drives the classic material pins (Base Color, Roughness ...). A Substrate project does not use them."""
+    """M_Master drives the classic material pins (Base Color, Roughness ...). With Substrate on, the engine converts them."""
     for cvar in ("r.Substrate", "r.Strata"):
         try:
             on = int(unreal.SystemLibrary.get_console_variable_int_value(cvar)) != 0
         except Exception:                                   # noqa: BLE001 - no such variable / call: nothing to check
             continue
         if on:
-            warn("Substrate is enabled in this project (%s). M_Master drives the classic material pins, which Substrate "
-                 "materials ignore: turn Substrate off (Project Settings > Engine > Rendering) or the material will look default." % cvar)
+            warn("Substrate is enabled in this project (%s). M_Master drives the classic material pins; the engine converts them, "
+                 "but this has not been tested. If the material looks wrong, try it with Substrate off." % cvar)
             return
 
 
@@ -1933,7 +1920,7 @@ def _build_everything():
     check_substrate()
     textures = ensure_placeholder_textures()
     mat = get_or_create_asset(ROOT_PATH, MASTER_NAME, unreal.Material, unreal.MaterialFactoryNew)
-    clear_graph(mat)                                        # empty first: the property changes below then recompile nothing
+    clear_graph(mat)                                        # empty first: the recompiles the property changes below cause are trivial
     configure_material(mat)
     try:
         graph = build_master(mat, textures, USE_ENGINE_FUNCTIONS)
