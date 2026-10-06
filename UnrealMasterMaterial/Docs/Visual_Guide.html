@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Master Material Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout concept: a workbench of five stations, one per idea of the master material.
+   Station colours are the comment-banner colours used inside the generated Unreal graph. */
+:root {
+  --bg: #eceff3;
+  --panel: #fbfcfd;
+  --ink: #16202b;
+  --muted: #536070;
+  --line: #cdd5de;
+  --chip: #e1e7ee;
+  --uv: #2f6fba;
+  --mask: #8453b8;
+  --vtx: #bf6a14;
+  --layer: #8d7710;
+  --stack: #23864c;
+  --out: #c2412f;
+  --focus: #1d63d1;
+  --font-display: 'Barlow Condensed', 'Arial Narrow', system-ui, sans-serif;
+  --font-body: 'Barlow', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1418; --panel: #151d23; --ink: #e8eef3; --muted: #9eacb9; --line: #29353f; --chip: #1e2a33;
+    --uv: #6aa7ec; --mask: #b78fe3; --vtx: #f0a04e; --layer: #d8c040; --stack: #55c581; --out: #ef7d6b; --focus: #7db4ff;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1418; --panel: #151d23; --ink: #e8eef3; --muted: #9eacb9; --line: #29353f; --chip: #1e2a33;
+  --uv: #6aa7ec; --mask: #b78fe3; --vtx: #f0a04e; --layer: #d8c040; --stack: #55c581; --out: #ef7d6b; --focus: #7db4ff;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font: 400 16px/1.5 var(--font-body);
+  padding-inline: max(16px, 3vw); padding-block: 22px 56px;
+}
+.wrap { max-width: 1140px; margin-inline: auto; display: grid; gap: 22px; }
+h1, h2 { font-family: var(--font-display); text-transform: uppercase; letter-spacing: .03em; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.1rem, 6vw, 3.4rem); line-height: .95; font-weight: 700; }
+h2 { font-size: clamp(1.45rem, 3.2vw, 1.9rem); line-height: 1.05; font-weight: 700; }
+p { margin: 0; max-width: 66ch; }
+code, .mono { font-family: var(--font-mono); font-size: .86em; }
+code { background: var(--chip); padding: 1px 5px; border-radius: 3px; }
+.muted { color: var(--muted); }
+
+header.top { display: grid; gap: 14px; padding-bottom: 16px; border-bottom: 2px solid var(--ink); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font: 500 .78rem/1 var(--font-body); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 14px; height: 14px; display: inline-block; background: var(--c); }
+
+.station { --st: var(--stack); background: var(--panel); border: 1px solid var(--line); border-top: 6px solid var(--st);
+  padding: clamp(14px, 2.4vw, 24px); display: grid; gap: 18px; }
+.station > header { display: grid; gap: 6px; }
+.tag { font: 600 .78rem/1 var(--font-body); letter-spacing: .14em; text-transform: uppercase; color: var(--st); }
+.cols { display: grid; gap: 22px; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); align-items: start; }
+@media (max-width: 760px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+.stack-col, .ctrl-col { display: grid; gap: 14px; min-width: 0; }
+canvas { display: block; width: 100%; height: auto; max-width: 100%; background: var(--chip); border: 1px solid var(--line); }
+canvas.px { image-rendering: auto; }
+
+.row { display: grid; gap: 4px 12px; grid-template-columns: minmax(0, 11rem) minmax(0, 1fr) 3.4rem; align-items: center; }
+.row label { font: 500 .8rem/1.2 var(--font-mono); overflow-wrap: anywhere; }
+.row output { font: 500 .82rem/1 var(--font-mono); text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 520px) { .row { grid-template-columns: minmax(0, 1fr) 3.4rem; } .row label { grid-column: 1 / -1; } }
+input[type=range] { width: 100%; accent-color: var(--st); margin: 0; }
+input[type=checkbox], input[type=radio] { accent-color: var(--st); width: 17px; height: 17px; margin: 0; }
+input:focus-visible, button:focus-visible, select:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.switches { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.switches label { display: inline-flex; gap: 8px; align-items: center; font: 500 .82rem/1.2 var(--font-mono); cursor: pointer; }
+.btns { display: flex; flex-wrap: wrap; gap: 8px; }
+button, select {
+  font: 600 .86rem/1 var(--font-body); letter-spacing: .04em; text-transform: uppercase; color: var(--ink);
+  background: var(--chip); border: 1px solid var(--line); padding: 9px 12px; cursor: pointer; border-radius: 3px;
+}
+button[aria-pressed="true"] { background: var(--st); color: var(--panel); border-color: var(--st); }
+button:hover:not([aria-pressed="true"]) { border-color: var(--st); }
+select { text-transform: none; letter-spacing: 0; font-weight: 500; }
+input[type=color] { width: 44px; height: 30px; padding: 0; border: 1px solid var(--line); background: var(--chip); }
+.hint { font-size: .9rem; color: var(--muted); }
+.formula { font: 500 .84rem/1.55 var(--font-mono); background: var(--chip); border-left: 4px solid var(--st); padding: 10px 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.num { font-variant-numeric: tabular-nums; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 12px; }
+.tile { display: grid; gap: 6px; text-align: left; padding: 0; background: none; border: 0; text-transform: none; letter-spacing: 0; }
+.tile span { font: 500 .8rem/1.25 var(--font-mono); color: var(--ink); }
+.tile b { font: 700 1.05rem/1 var(--font-display); letter-spacing: .06em; text-transform: uppercase; color: var(--st); display: block; margin-bottom: 2px; }
+.tile[aria-pressed="true"] canvas { outline: 3px solid var(--st); outline-offset: 1px; }
+
+.cmp { display: grid; gap: 10px; }
+.cmp figure { margin: 0; display: grid; gap: 4px; }
+.cmp figcaption { font: 500 .8rem/1.2 var(--font-mono); color: var(--muted); }
+
+table { border-collapse: collapse; width: 100%; font-size: .93rem; }
+.tablewrap { overflow-x: auto; }
+th, td { text-align: left; padding: 7px 10px 7px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 .74rem/1 var(--font-body); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+td:first-child { font-family: var(--font-mono); font-size: .8rem; white-space: nowrap; }
+footer { color: var(--muted); font-size: .9rem; }
+</style>
+<style>html { color-scheme: light dark; } body { margin: 0; }</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Master Material Lab</h1>
+    <p>The same maths as the Unreal master material <code>M_Master_Surface</code>, running on small procedural textures. Move the sliders, switch layers, paint vertices, and watch what each parameter really does before you touch the engine.</p>
+    <div class="legend" aria-label="Colour key">
+      <span style="--c: var(--uv)"><i></i>UV</span>
+      <span style="--c: var(--mask)"><i></i>RGB mask</span>
+      <span style="--c: var(--layer)"><i></i>Layers</span>
+      <span style="--c: var(--vtx)"><i></i>Vertex paint</span>
+      <span style="--c: var(--stack)"><i></i>Layer stack</span>
+      <span style="--c: var(--out)"><i></i>Output</span>
+      <span class="muted" style="text-transform:none;letter-spacing:0;font-size:.85rem">Same colours as the section banners in the Material Editor.</span>
+    </div>
+  </header>
+
+  <!-- ===== Station 1: stack ===== -->
+  <section class="station" style="--st: var(--stack)" id="stack">
+    <header>
+      <span class="tag">Layer stack</span>
+      <h2>One master, many looks</h2>
+      <p>A crate panel with a base paint layer, rust underneath (wear, mask R), grime on top (dirt, mask G) and bright scratches (mask B). Pick a preset or build your own. The three presets are three instances of one material.</p>
+    </header>
+    <div class="cols">
+      <div class="stack-col">
+        <canvas id="cvLook" width="288" height="288" aria-label="Preview of the crate panel"></canvas>
+        <div class="btns" id="presets" role="group" aria-label="Instance presets">
+          <button type="button" data-p="red">MI_Crate_Red</button>
+          <button type="button" data-p="blue">MI_Crate_Blue</button>
+          <button type="button" data-p="pale">MI_Crate_Pale</button>
+        </div>
+      </div>
+      <div class="ctrl-col">
+        <div class="row"><label for="tint">Base Tint</label><input id="tint" type="color" value="#b3261e"><output></output></div>
+        <div class="switches" role="group" aria-label="Static switches">
+          <label><input type="checkbox" id="swWear" checked>Use Wear Layer</label>
+          <label><input type="checkbox" id="swDirt" checked>Use Dirt Layer</label>
+          <label><input type="checkbox" id="swScr" checked>Use Scratches</label>
+        </div>
+        <div class="row"><label for="wearInt">Wear Intensity</label><input id="wearInt" type="range" min="0" max="2" step="0.01" value="1.1"><output></output></div>
+        <div class="row"><label for="dirtInt">Dirt Intensity</label><input id="dirtInt" type="range" min="0" max="2" step="0.01" value="0.6"><output></output></div>
+        <div class="row"><label for="scrInt">Scratch Intensity</label><input id="scrInt" type="range" min="0" max="2" step="0.01" value="1"><output></output></div>
+        <div class="row"><label for="edgeStr">Wear Edge Strength</label><input id="edgeStr" type="range" min="0" max="1" step="0.01" value="0.6"><output></output></div>
+        <div class="row"><label for="wearSoft">Wear Softness</label><input id="wearSoft" type="range" min="0.005" max="0.5" step="0.005" value="0.06"><output></output></div>
+        <div class="row"><label for="view">Debug Mode</label>
+          <select id="view" aria-label="Debug view">
+            <option value="final">Final look</option>
+            <option value="m0">1  Mask R (wear)</option>
+            <option value="m1">2  Mask G (dirt)</option>
+            <option value="m2">3  Mask B (scratches)</option>
+            <option value="m3">4  Mask A (baked AO)</option>
+            <option value="w0">7  Wear weight</option>
+            <option value="w1">8  Dirt weight</option>
+            <option value="w2">9  Scratch weight</option>
+          </select><output></output></div>
+        <p class="hint">Switching a layer off here is the <code>Use ... Layer</code> static switch. In Unreal it removes the layer and its texture samples from the shader.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Station 2: mask ===== -->
+  <section class="station" style="--st: var(--mask)" id="mask">
+    <header>
+      <span class="tag">RGB mask</span>
+      <h2>Four jobs, one texture</h2>
+      <p>This is what you paint in Substance Painter on the unique UVs. R is wear, G is dirt, B is scratches and A is baked ambient occlusion. Click a tile to view that channel on the panel above. Stored together they look like the magenta and blue mask sheets in the assignment.</p>
+    </header>
+    <div class="tiles" id="tiles"></div>
+  </section>
+
+  <!-- ===== Station 3: reveal ===== -->
+  <section class="station" style="--st: var(--layer)" id="reveal">
+    <header>
+      <span class="tag">Height-aware blend</span>
+      <h2>From a soft mask to a chipped edge</h2>
+      <p>A 1k mask is blurry. <code>MF_RevealWeight</code> uses the mask as a water level and the layer's height map plus a breakup noise as the terrain: pixels switch on in the order of the terrain, so the edge follows real texture detail.</p>
+    </header>
+    <div class="cols">
+      <div class="stack-col">
+        <canvas id="cvCurve" width="380" height="300" aria-label="Blend weight against mask value"></canvas>
+        <div class="formula num" id="formulaOut"></div>
+      </div>
+      <div class="ctrl-col">
+        <div class="row"><label for="rSoft">Softness</label><input id="rSoft" type="range" min="0.005" max="0.5" step="0.005" value="0.08"><output></output></div>
+        <div class="row"><label for="rHi">Height Influence</label><input id="rHi" type="range" min="-1" max="1" step="0.01" value="0.5"><output></output></div>
+        <div class="row"><label for="rBk">Breakup (strength)</label><input id="rBk" type="range" min="0" max="1" step="0.01" value="0.4"><output></output></div>
+        <div class="row"><label for="rH">This pixel's height</label><input id="rH" type="range" min="0" max="1" step="0.01" value="0.5"><output></output></div>
+        <div class="row"><label for="rN">This pixel's noise</label><input id="rN" type="range" min="0" max="1" step="0.01" value="0.5"><output></output></div>
+        <div class="cmp">
+          <figure><canvas id="cvPlain" width="380" height="64" aria-label="Plain mask blend"></canvas><figcaption>A plain lerp by the mask (a soft gradient)</figcaption></figure>
+          <figure><canvas id="cvReveal" width="380" height="64" aria-label="Height-aware blend"></canvas><figcaption>MF_RevealWeight with the settings above (same gradient)</figcaption></figure>
+        </div>
+        <p class="hint">Try Softness 0.02 with Height Influence 1 and Breakup 0.6 for razor-sharp, irregular chips. Height 0.5 and noise 0.5 are the neutral values. Watch the curve: at the defaults a mask value of 0.3 reveals only a few pixels and 0.7 almost all of them, so paint your masks clearly white where the effect must show.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Station 4: vertex ===== -->
+  <section class="station" style="--st: var(--vtx)" id="vertex">
+    <header>
+      <span class="tag">Vertex paint</span>
+      <h2>Paint black, reveal the brick</h2>
+      <p>The assignment's setup is Mesh Paint, Vertex Color tab, Red channel only, Paint Color black and Erase Color white. Drag on the wall to paint. The dots are the mesh's vertices. Paint only exists where vertices are, so a denser mesh paints finer.</p>
+    </header>
+    <div class="cols">
+      <div class="stack-col">
+        <canvas id="cvVtx" width="288" height="288" style="touch-action:none;cursor:crosshair" aria-label="Wall with vertex paint. Drag to paint."></canvas>
+        <div class="btns" role="group" aria-label="Paint tools">
+          <button type="button" id="bPaint" aria-pressed="true">Paint (black)</button>
+          <button type="button" id="bErase" aria-pressed="false">Erase (white)</button>
+          <button type="button" id="bClear">Clear</button>
+          <button type="button" id="bSample">Sample</button>
+        </div>
+      </div>
+      <div class="ctrl-col">
+        <div class="row"><label for="vGrid">Vertices per side</label><input id="vGrid" type="range" min="4" max="40" step="1" value="14"><output></output></div>
+        <div class="row"><label for="vBrush">Brush size</label><input id="vBrush" type="range" min="0.04" max="0.4" step="0.01" value="0.16"><output></output></div>
+        <div class="row"><label for="vStr">Brush strength</label><input id="vStr" type="range" min="0.05" max="1" step="0.01" value="0.6"><output></output></div>
+        <div class="switches" role="group" aria-label="Blend model">
+          <label><input type="radio" name="vmodel" id="vmH" checked>Height-aware (the master)</label>
+          <label><input type="radio" name="vmodel" id="vmP">Plain gradient</label>
+          <label><input type="checkbox" id="vWire" checked>Show vertices</label>
+        </div>
+        <div class="row"><label for="vSoft">Vertex 1 Softness</label><input id="vSoft" type="range" min="0.005" max="0.5" step="0.005" value="0.06"><output></output></div>
+        <div class="row"><label for="vHi">Vertex 1 Height Influence</label><input id="vHi" type="range" min="-1" max="1" step="0.01" value="0.9"><output></output></div>
+        <div class="row"><label for="vBk">Vertex 1 Breakup</label><input id="vBk" type="range" min="0" max="1" step="0.01" value="0.5"><output></output></div>
+        <p class="hint">Switch to <em>Plain gradient</em> to see the same paint without height and breakup. It is a blurry smear. The painted amount is 1 minus vertex red, because an unpainted mesh is white.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Station 5: knobs ===== -->
+  <section class="station" style="--st: var(--uv)" id="knobs">
+    <header>
+      <span class="tag">Cheat sheet</span>
+      <h2>The knobs you will use most</h2>
+    </header>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Parameter</th><th>What it changes</th></tr></thead>
+        <tbody>
+          <tr><td>Base Tint</td><td>Recolours the paint layer. The fastest way to get a new instance.</td></tr>
+          <tr><td>Wear Intensity</td><td>How much of mask R counts as worn. Above 1 grows the damage, below 1 keeps only the worst edges.</td></tr>
+          <tr><td>Wear Softness</td><td>Width of the chipped edge. Small is crisp, large is a smooth fade.</td></tr>
+          <tr><td>Wear Height Influence</td><td>How much the rust texture's own height decides where chips appear first. Negative flips it.</td></tr>
+          <tr><td>Wear Breakup</td><td>Erodes the edge with the tiling breakup noise, so a 1k mask stays sharp up close.</td></tr>
+          <tr><td>Wear Edge Strength</td><td>Dark rim where paint meets the exposed layer.</td></tr>
+          <tr><td>Wear Invert</td><td>0 uses mask R as painted, 1 turns it inside out (the same for Dirt and Scratch Invert).</td></tr>
+          <tr><td>Layer Tints</td><td>All white by default: a texture you assign shows exactly as authored. A colour multiplies it.</td></tr>
+          <tr><td>Dirt AO Boost</td><td>Adds grime in crevices using the baked AO in mask alpha.</td></tr>
+          <tr><td>Global Tiling</td><td>Texel-density knob for every tiling texture at once.</td></tr>
+          <tr><td>Use ... (group 00)</td><td>Static switches. Off means the layer and its texture samples are gone from the shader.</td></tr>
+          <tr><td>Vertex 1 Softness / Height Influence / Breakup</td><td>Sharpens and roughens the painted edge, exactly as the playground above.</td></tr>
+          <tr><td>Debug View + Debug Mode</td><td>Shows masks, weights, vertex colour and UV checks on the mesh. Start here when something looks wrong.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>Everything on this page is a simulation on procedural textures. The real material is generated by <code>Scripts/build_master_material.py</code> and explained in <code>Docs/01_How_It_Works.md</code>.</footer>
+</div>
+
+<script>
+/*MATH-BEGIN*/
+function clamp01(x) { return x < 0 ? 0 : x > 1 ? 1 : x; }
+function lerp(a, b, t) { return a + (b - a) * t; }
+function lerp3(a, b, t) { return [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)]; }
+function smooth(t) { t = clamp01(t); return t * t * (3 - 2 * t); }
+/* MF_RevealWeight, node for node */
+function reveal(m, height, o) {
+  var mm = clamp01(lerp(m, 1 - m, o.invert || 0) * (o.intensity === undefined ? 1 : o.intensity));
+  var hTerm = 0.5 - o.hi * (height - 0.5);
+  var T = clamp01(hTerm + o.bkStr * (0.5 - o.bk));
+  var w2 = Math.max(o.soft, 0.001) * 2.0;
+  return clamp01((mm * (w2 + 1.0) - T) / w2);
+}
+/* colour part of MF_LayerBlend (edge rim) */
+function blendColor(A, B, w, edgeColor, edgeStrength) {
+  var c = lerp3(A, B, w);
+  var rim = clamp01(w * (1 - w) * 4 * edgeStrength);
+  return lerp3(c, edgeColor, rim);
+}
+/* tileable value noise + fbm, deterministic */
+function rng(seed) { var s = (seed * 2654435761 + 1) >>> 0; return function () { s = (Math.imul(s, 1103515245) + 12345) & 0x7fffffff; return s / 0x7fffffff; }; }
+function valueNoise(size, cells, seed) {
+  var r = rng(seed), lat = [], i, j;
+  for (i = 0; i < cells; i++) { lat.push([]); for (j = 0; j < cells; j++) lat[i].push(r()); }
+  var out = new Float32Array(size * size);
+  for (var y = 0; y < size; y++) {
+    var fy = y * cells / size, y0 = Math.floor(fy), ty = smooth(fy - y0), r0 = lat[y0 % cells], r1 = lat[(y0 + 1) % cells];
+    for (var x = 0; x < size; x++) {
+      var fx = x * cells / size, x0 = Math.floor(fx), tx = smooth(fx - x0), x1 = (x0 + 1) % cells; x0 %= cells;
+      var a = r0[x0] + (r0[x1] - r0[x0]) * tx, b = r1[x0] + (r1[x1] - r1[x0]) * tx;
+      out[y * size + x] = a + (b - a) * ty;
+    }
+  }
+  return out;
+}
+function fbm(size, baseCells, octaves, seed, contrast) {
+  var total = new Float32Array(size * size), amp = 1, norm = 0, cells = baseCells;
+  for (var o = 0; o < octaves; o++) {
+    var n = valueNoise(size, cells, seed + o * 101);
+    for (var i = 0; i < n.length; i++) total[i] += n[i] * amp;
+    norm += amp; amp *= 0.5; cells *= 2;
+  }
+  for (var k = 0; k < total.length; k++) total[k] = clamp01((total[k] / norm - 0.5) * contrast + 0.5);
+  return total;
+}
+/*MATH-END*/
+
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var tok = function (name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); };
+  function hex(h) { return [parseInt(h.substr(1, 2), 16) / 255, parseInt(h.substr(3, 2), 16) / 255, parseInt(h.substr(5, 2), 16) / 255]; }
+  function toByte(x) { return x <= 0 ? 0 : x >= 1 ? 255 : Math.round(x * 255); }
+  function srgbOut(c) { return c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055; }
+  function srgbIn(c) { return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }
+  function lin(h) { var c = hex(h); return [srgbIn(c[0]), srgbIn(c[1]), srgbIn(c[2])]; }
+  function out(el) { return el.parentNode.querySelector('output'); }
+  function bindOutputs(root) {
+    var ins = root.querySelectorAll('input[type=range]');
+    for (var i = 0; i < ins.length; i++) (function (inp) {
+      var o = out(inp); var dec = ((inp.step || '1').split('.')[1] || '').length; var upd = function () { if (o) o.textContent = (+inp.value).toFixed(dec); };
+      inp.addEventListener('input', upd); upd();
+    })(ins[i]);
+  }
+
+  /* ---------- procedural content for the crate panel ---------- */
+  var S = 144;
+  var nW = fbm(S, 5, 5, 51, 1.7), nD = fbm(S, 4, 5, 52, 1.6), nR = fbm(S, 6, 5, 21, 1.8), nR2 = fbm(S, 12, 4, 22, 1.4);
+  var nB = fbm(S, 8, 5, 61, 1.5), nP = fbm(S, 16, 3, 11, 1.3), nG = fbm(S, 9, 4, 71, 1.4);
+  var N = S * S;
+  var geoH = new Float32Array(N), maskR = new Float32Array(N), maskG = new Float32Array(N), maskB = new Float32Array(N), maskA = new Float32Array(N);
+  var shadeBase = new Float32Array(N), shadeRust = new Float32Array(N);
+  (function build() {
+    var i, x, y, u, v, d;
+    var r = rng(53), lines = new Float32Array(N);
+    for (var l = 0; l < 26; l++) {
+      var px = r() * S, py = r() * S, ang = r() * Math.PI, len = 10 + r() * 44, dx = Math.cos(ang), dy = Math.sin(ang);
+      for (var t = 0; t < len; t++) { var ix = Math.floor(px + dx * t), iy = Math.floor(py + dy * t); if (ix >= 0 && iy >= 0 && ix < S && iy < S) lines[iy * S + ix] = 1; }
+    }
+    for (y = 0; y < S; y++) for (x = 0; x < S; x++) {
+      i = y * S + x; u = x / S; v = y / S;
+      d = Math.min(u, v, 1 - u, 1 - v);
+      var frame = smooth((0.085 - d) / 0.03 + 0.5);
+      var ribs = 0, rb = [0.3, 0.5, 0.7];
+      for (var k = 0; k < 3; k++) ribs = Math.max(ribs, smooth(1 - Math.abs(v - rb[k]) / 0.028));
+      var rivet = 0, rx = (u * 8) % 1 - 0.5, ry = (v * 8) % 1 - 0.5;
+      if (d < 0.2 && d > 0.1) rivet = smooth(1 - Math.hypot(rx, ry) / 0.18);
+      geoH[i] = 0.45 + 0.32 * frame + 0.16 * ribs + 0.1 * rivet;
+      var edge = smooth(1 - d / 0.15), ribEdge = ribs * 0.55;
+      maskR[i] = clamp01(0.08 + 0.95 * Math.max(edge, ribEdge) * (0.35 + 0.8 * nW[i]) + (nW[i] - 0.55) * 0.9);
+      maskG[i] = clamp01((0.1 + 0.9 * Math.pow(v, 2.2)) * (0.3 + 0.95 * nD[i]) - 0.08 + 0.2 * (1 - frame) * (1 - v) * nD[i]);
+      maskB[i] = clamp01(lines[i] * 0.95 * (0.5 + 0.5 * nG[i]));
+      maskA[i] = clamp01(1 - 0.5 * smooth((d - 0.07) / 0.05) * smooth(1 - (d - 0.07) / 0.1) - 0.25 * ribs);
+    }
+    var lx = -0.55, ly = -0.65, lz = 0.52, ln = Math.hypot(lx, ly, lz); lx /= ln; ly /= ln; lz /= ln;
+    function shadeOf(h, relief, idx) {
+      var gx = (h(idx + (idx % S < S - 1 ? 1 : 0)) - h(idx - (idx % S > 0 ? 1 : 0))) * relief;
+      var gy = (h(idx + (idx < N - S ? S : 0)) - h(idx - (idx >= S ? S : 0))) * relief;
+      var nx = -gx, ny = -gy, nz = 1, nn = Math.hypot(nx, ny, nz);
+      return 0.42 + 0.95 * clamp01((nx * lx + ny * ly + nz * lz) / nn);
+    }
+    for (i = 0; i < N; i++) {
+      shadeBase[i] = shadeOf(function (k) { return geoH[k] + nP[k] * 0.02; }, 20, i);
+      shadeRust[i] = shadeOf(function (k) { return geoH[k] + nR[k] * 0.12; }, 20, i);
+    }
+  })();
+
+  var look = { tint: hex('#b3261e'), wear: 1.1, dirt: 0.6, scr: 1, edge: 0.6, soft: 0.06, sw: [true, true, true], view: 'final' };
+  var C_RUST_A = lin('#5b2611'), C_RUST_B = lin('#c9692b'), C_DIRT = lin('#2b2119'), C_SCR = lin('#b7bbc2'), C_EDGE = lin('#1a0a05');
+
+  function renderLook() {
+    var cv = $('cvLook'), ctx = cv.getContext('2d'), img = ctx.createImageData(S, S), p = img.data;
+    var tint = [srgbIn(look.tint[0]), srgbIn(look.tint[1]), srgbIn(look.tint[2])];
+    var ow = { intensity: look.wear, hi: 0.5, bk: 0.5, bkStr: 0.4, soft: look.soft };
+    var od = { intensity: look.dirt, hi: 0.3, bk: 0.5, bkStr: 0.4, soft: 0.2 };
+    var os = { intensity: look.scr, hi: 0, bk: 0.5, bkStr: 0.2, soft: 0.05 };
+    for (var i = 0; i < N; i++) {
+      var hRust = nR[i], bk = nB[i];
+      ow.bk = od.bk = os.bk = bk;
+      var ao = maskA[i];
+      var dirtMask = clamp01(maskG[i] + (1 - ao) * 0.5);
+      var wW = look.sw[0] ? reveal(maskR[i], hRust, ow) : 0;
+      var wD = look.sw[1] ? reveal(dirtMask, nD[i], od) : 0;
+      var wS = look.sw[2] ? reveal(maskB[i], 0.5, os) : 0;
+      var out3, shade;
+      var base = [tint[0] * (0.9 + 0.1 * nP[i]), tint[1] * (0.9 + 0.1 * nP[i]), tint[2] * (0.9 + 0.1 * nP[i])];
+      var rust = lerp3(C_RUST_A, C_RUST_B, nR2[i]);
+      var v = look.view;
+      if (v === 'final') {
+        var c = blendColor(base, rust, wW, C_EDGE, look.edge);
+        c = lerp3(c, C_DIRT, wD * 0.85);
+        c = lerp3(c, C_SCR, wS);
+        shade = lerp(shadeBase[i], shadeRust[i], wW);
+        var f = shade * (0.55 + 0.45 * ao);
+        out3 = [c[0] * f, c[1] * f, c[2] * f];
+      } else {
+        var g = v === 'm0' ? maskR[i] : v === 'm1' ? maskG[i] : v === 'm2' ? maskB[i] : v === 'm3' ? maskA[i] :
+                v === 'w0' ? wW : v === 'w1' ? wD : wS;
+        out3 = [g, g, g];
+      }
+      var o = i * 4;
+      p[o] = toByte(srgbOut(clamp01(out3[0] / (v === 'final' ? 1.15 : 1))));
+      p[o + 1] = toByte(srgbOut(clamp01(out3[1] / (v === 'final' ? 1.15 : 1))));
+      p[o + 2] = toByte(srgbOut(clamp01(out3[2] / (v === 'final' ? 1.15 : 1))));
+      p[o + 3] = 255;
+    }
+    var off = renderLook.off || (renderLook.off = document.createElement('canvas'));
+    off.width = S; off.height = S; off.getContext('2d').putImageData(img, 0, 0);
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(off, 0, 0, cv.width, cv.height);
+  }
+
+  var PRESETS = {
+    red: { tint: '#c23a2b', wear: 1.3, dirt: 0.5, scr: 1, edge: 0.8, soft: 0.05 },
+    blue: { tint: '#2358b8', wear: 0.45, dirt: 0.3, scr: 1.2, edge: 0.6, soft: 0.07 },
+    pale: { tint: '#e7cfc4', wear: 1.0, dirt: 1.3, scr: 0.6, edge: 0.5, soft: 0.12 }
+  };
+  function setLookControls() {
+    $('tint').value = '#' + look.tint.map(function (c) { return ('0' + toByte(c).toString(16)).slice(-2); }).join('');
+    $('wearInt').value = look.wear; $('dirtInt').value = look.dirt; $('scrInt').value = look.scr; $('edgeStr').value = look.edge; $('wearSoft').value = look.soft;
+    ['wearInt', 'dirtInt', 'scrInt', 'edgeStr', 'wearSoft'].forEach(function (id) { $(id).dispatchEvent(new Event('input')); });
+  }
+  function readLook() {
+    look.tint = hex($('tint').value); look.wear = +$('wearInt').value; look.dirt = +$('dirtInt').value; look.scr = +$('scrInt').value;
+    look.edge = +$('edgeStr').value; look.soft = +$('wearSoft').value;
+    look.sw = [$('swWear').checked, $('swDirt').checked, $('swScr').checked]; look.view = $('view').value;
+  }
+  ['tint', 'wearInt', 'dirtInt', 'scrInt', 'edgeStr', 'wearSoft', 'swWear', 'swDirt', 'swScr', 'view'].forEach(function (id) {
+    $(id).addEventListener('input', function () { readLook(); renderLook(); renderTiles(); });
+    $(id).addEventListener('change', function () { readLook(); renderLook(); renderTiles(); });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('#presets button'), function (b) {
+    b.addEventListener('click', function () {
+      var p = PRESETS[b.getAttribute('data-p')];
+      look.tint = hex(p.tint); look.wear = p.wear; look.dirt = p.dirt; look.scr = p.scr; look.edge = p.edge; look.soft = p.soft;
+      setLookControls(); readLook(); renderLook(); renderTiles();
+    });
+  });
+
+  /* ---------- mask tiles ---------- */
+  var tilesEl = $('tiles'), tileCanvases = [];
+  var TILE_DEF = [['R', 'Wear', maskR, 'm0', 'Metal Edge Wear + chips'], ['G', 'Dirt', maskG, 'm1', 'Dirt generator, grime'],
+                  ['B', 'Scratches', maskB, 'm2', 'Scratch lines'], ['A', 'AO', maskA, 'm3', 'Baked ambient occlusion']];
+  TILE_DEF.forEach(function (t) {
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'tile'; b.setAttribute('aria-pressed', 'false');
+    b.innerHTML = '<b>' + t[0] + ' ' + t[1] + '</b>';
+    var cv = document.createElement('canvas'); cv.width = 96; cv.height = 96; b.appendChild(cv);
+    var sp = document.createElement('span'); sp.textContent = t[4]; b.appendChild(sp);
+    b.addEventListener('click', function () { $('view').value = t[3]; readLook(); renderLook(); renderTiles(); });
+    tilesEl.appendChild(b); tileCanvases.push([cv, t, b]);
+  });
+  var combo = document.createElement('button'); combo.type = 'button'; combo.className = 'tile'; combo.setAttribute('aria-pressed', 'false');
+  combo.innerHTML = '<b>RGB together</b>'; var comboCv = document.createElement('canvas'); comboCv.width = 96; comboCv.height = 96; combo.appendChild(comboCv);
+  var cs = document.createElement('span'); cs.textContent = 'What the exported mask looks like'; combo.appendChild(cs);
+  combo.addEventListener('click', function () { $('view').value = 'final'; readLook(); renderLook(); renderTiles(); });
+  tilesEl.appendChild(combo);
+  function renderTiles() {
+    tileCanvases.forEach(function (e) {
+      var cv = e[0], ctx = cv.getContext('2d'), img = ctx.createImageData(96, 96), arr = e[1][2];
+      for (var y = 0; y < 96; y++) for (var x = 0; x < 96; x++) {
+        var g = toByte(arr[Math.floor(y * S / 96) * S + Math.floor(x * S / 96)]); var o = (y * 96 + x) * 4;
+        img.data[o] = img.data[o + 1] = img.data[o + 2] = g; img.data[o + 3] = 255;
+      }
+      ctx.putImageData(img, 0, 0);
+      e[2].setAttribute('aria-pressed', String(look.view === e[1][3]));
+    });
+    var ctx = comboCv.getContext('2d'), img = ctx.createImageData(96, 96);
+    for (var y = 0; y < 96; y++) for (var x = 0; x < 96; x++) {
+      var i = Math.floor(y * S / 96) * S + Math.floor(x * S / 96), o = (y * 96 + x) * 4;
+      img.data[o] = toByte(maskR[i]); img.data[o + 1] = toByte(maskG[i]); img.data[o + 2] = toByte(maskB[i]); img.data[o + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+
+  /* ---------- reveal lab ---------- */
+  function revealOpts() { return { hi: +$('rHi').value, bkStr: +$('rBk').value, bk: +$('rN').value, soft: +$('rSoft').value }; }
+  function renderCurve() {
+    var cv = $('cvCurve'), dpr = window.devicePixelRatio || 1, W = cv.clientWidth || 380, H = Math.round(W * 300 / 380);
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    var c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    var ink = tok('--ink'), muted = tok('--muted'), line = tok('--line'), st = tok('--layer'), chip = tok('--chip');
+    c.fillStyle = chip; c.fillRect(0, 0, W, H);
+    var L = 52, R = 12, T = 14, B = 34, pw = W - L - R, ph = H - T - B;
+    c.strokeStyle = line; c.lineWidth = 1; c.fillStyle = muted; c.font = '11px ' + tok('--font-mono'); c.textAlign = 'center'; c.textBaseline = 'top';
+    for (var i = 0; i <= 4; i++) {
+      var gx = L + pw * i / 4, gy = T + ph * i / 4;
+      c.beginPath(); c.moveTo(gx, T); c.lineTo(gx, T + ph); c.stroke();
+      c.beginPath(); c.moveTo(L, gy); c.lineTo(L + pw, gy); c.stroke();
+      c.fillText((i / 4).toFixed(2).replace(/0$/, ''), gx, T + ph + 6);
+    }
+    c.textAlign = 'right'; c.textBaseline = 'middle';
+    for (i = 0; i <= 4; i++) c.fillText((1 - i / 4).toFixed(2).replace(/0$/, ''), L - 6, T + ph * i / 4);
+    c.textAlign = 'center'; c.textBaseline = 'bottom'; c.fillText('mask value', L + pw / 2, H - 2);
+    c.save(); c.translate(9, T + ph / 2); c.rotate(-Math.PI / 2); c.textAlign = 'center'; c.textBaseline = 'top'; c.fillText('weight', 0, 0); c.restore();
+    var o = revealOpts();
+    // reference diagonal
+    c.setLineDash([4, 4]); c.strokeStyle = muted; c.beginPath(); c.moveTo(L, T + ph); c.lineTo(L + pw, T); c.stroke(); c.setLineDash([]);
+    // curve
+    c.strokeStyle = st; c.lineWidth = 3; c.beginPath();
+    for (i = 0; i <= 200; i++) { var m = i / 200, w = reveal(m, +$('rH').value, o), x = L + pw * m, y = T + ph * (1 - w); if (i) c.lineTo(x, y); else c.moveTo(x, y); }
+    c.stroke();
+    // window markers
+    var Tt = clamp01(0.5 - o.hi * (+$('rH').value - 0.5) + o.bkStr * (0.5 - o.bk)), w2 = Math.max(o.soft, 0.001) * 2;
+    var m0 = Tt / (1 + w2), m1 = (Tt + w2) / (1 + w2);
+    c.strokeStyle = ink; c.lineWidth = 1; c.setLineDash([2, 3]);
+    [m0, Math.min(1, m1)].forEach(function (m) { c.beginPath(); c.moveTo(L + pw * m, T); c.lineTo(L + pw * m, T + ph); c.stroke(); });
+    c.setLineDash([]);
+    $('formulaOut').textContent =
+      'threshold T = ' + Tt.toFixed(3) + '\n' +
+      'weight 0 below mask ' + m0.toFixed(3) + '\n' +
+      'weight 1 above mask ' + Math.min(1, m1).toFixed(3) + '\n' +
+      'transition width ' + (Math.min(1, m1) - m0).toFixed(3);
+  }
+  function renderStrips() {
+    var o = revealOpts();
+    var A = lin('#6b7a86'), Bc = lin('#c06a2c');
+    [$('cvPlain'), $('cvReveal')].forEach(function (cv, idx) {
+      var W = 380, H = 64, ctx = cv.getContext('2d'), img = ctx.createImageData(W, H);
+      for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) {
+        var m = x / (W - 1), ni = Math.floor(y * S / H) * S + Math.floor(x * S / W);
+        var w = idx === 0 ? m : reveal(m, nR[ni], { hi: o.hi, bkStr: o.bkStr, bk: nB[ni], soft: o.soft });
+        var c = lerp3(A, Bc, w), p = (y * W + x) * 4;
+        img.data[p] = toByte(srgbOut(c[0])); img.data[p + 1] = toByte(srgbOut(c[1])); img.data[p + 2] = toByte(srgbOut(c[2])); img.data[p + 3] = 255;
+      }
+      ctx.putImageData(img, 0, 0);
+    });
+  }
+  ['rSoft', 'rHi', 'rBk', 'rH', 'rN'].forEach(function (id) { $(id).addEventListener('input', function () { renderCurve(); renderStrips(); }); });
+
+  /* ---------- vertex playground ---------- */
+  var VS = 128, vN = VS * VS;
+  var brickH = new Float32Array(vN), brickId = new Float32Array(vN), plasterN = fbm(VS, 10, 5, 41, 1.5), brickN = fbm(VS, 16, 3, 3, 1.2), vBreak = fbm(VS, 8, 5, 61, 1.5);
+  (function () {
+    var rows = 8, cols = 4, rh = VS / rows, bw = VS / cols, mortar = 2, ids = {};
+    for (var y = 0; y < VS; y++) {
+      var row = Math.floor(y / rh), fy = y - row * rh, off = row % 2 ? bw / 2 : 0;
+      for (var x = 0; x < VS; x++) {
+        var xx = (x + off) % VS, col = Math.floor(xx / bw), fx = xx - col * bw, d = Math.min(fy, rh - fy, fx, bw - fx);
+        var t = smooth((d - mortar * 0.5) / (mortar + 1.5)); var key = row * 31 + col;
+        if (!(key in ids)) ids[key] = rng(3 + row * 17 + col * 31)();
+        brickId[y * VS + x] = ids[key];
+        brickH[y * VS + x] = 0.08 + t * (0.7 + 0.22 * brickN[y * VS + x]);
+      }
+    }
+  })();
+  var vShadePlaster = new Float32Array(vN), vShadeBrick = new Float32Array(vN);
+  (function () {
+    var lx = -0.55, ly = -0.65, lz = 0.52, ln = Math.hypot(lx, ly, lz); lx /= ln; ly /= ln; lz /= ln;
+    function sh(hf, relief) {
+      var arr = new Float32Array(vN);
+      for (var y = 0; y < VS; y++) for (var x = 0; x < VS; x++) {
+        var i = y * VS + x, gx = (hf((x + 1) % VS, y) - hf((x + VS - 1) % VS, y)) * relief, gy = (hf(x, (y + 1) % VS) - hf(x, (y + VS - 1) % VS)) * relief;
+        var nn = Math.hypot(gx, gy, 1); arr[i] = 0.45 + 0.95 * clamp01((-gx * lx - gy * ly + lz) / nn);
+      }
+      return arr;
+    }
+    vShadePlaster = sh(function (x, y) { return plasterN[y * VS + x]; }, 1.4);
+    vShadeBrick = sh(function (x, y) { return brickH[y * VS + x]; }, 4.0);
+  })();
+  var vtx = { n: 14, v: null, brush: 0.16, str: 0.6, erase: false };
+  function newVerts(n) { vtx.n = n; vtx.v = new Float32Array((n + 1) * (n + 1)); }   // painted amount 0..1 per vertex
+  function sampleStroke() {
+    var n = vtx.n, v = vtx.v; v.fill(0);
+    for (var j = 0; j <= n; j++) for (var i = 0; i <= n; i++) {
+      var u = i / n, w = j / n, d = Math.hypot(u - 0.42, w - 0.55);
+      var a = clamp01(1 - d / 0.3) * 1.0, b = clamp01(1 - Math.hypot(u - 0.72, w - 0.28) / 0.2) * 0.9;
+      v[j * (n + 1) + i] = clamp01(Math.max(a, b));
+    }
+  }
+  function paintAt(u, w) {
+    var n = vtx.n, v = vtx.v, r = vtx.brush;
+    for (var j = 0; j <= n; j++) for (var i = 0; i <= n; i++) {
+      var d = Math.hypot(i / n - u, j / n - w);
+      if (d < r) {
+        var f = Math.pow(1 - d / r, 1.2) * vtx.str;
+        var k = j * (n + 1) + i;
+        v[k] = vtx.erase ? clamp01(v[k] - f) : clamp01(v[k] + f);
+      }
+    }
+  }
+  var C_PLASTER = [lin('#d9d0bd'), lin('#bdb39f')], C_MORTAR = lin('#8f8a82');
+  var VW = 160;
+  function renderVtx() {
+    var cv = $('cvVtx'), ctx = cv.getContext('2d'), img = ctx.createImageData(VW, VW), p = img.data;
+    var n = vtx.n, v = vtx.v, soft = +$('vSoft').value, hi = +$('vHi').value, bks = +$('vBk').value, plain = $('vmP').checked;
+    for (var y = 0; y < VW; y++) {
+      var fy = y / (VW - 1) * n, j = Math.min(n - 1, Math.floor(fy)), ty = fy - j;
+      for (var x = 0; x < VW; x++) {
+        var fx = x / (VW - 1) * n, i = Math.min(n - 1, Math.floor(fx)), tx = fx - i;
+        var a = v[j * (n + 1) + i], b = v[j * (n + 1) + i + 1], c2 = v[(j + 1) * (n + 1) + i], d2 = v[(j + 1) * (n + 1) + i + 1];
+        var paint = lerp(lerp(a, b, tx), lerp(c2, d2, tx), ty);
+        var ti = Math.floor(y * VS / VW) * VS + Math.floor(x * VS / VW);
+        var w = plain ? paint : reveal(paint, brickH[ti], { hi: hi, bk: vBreak[ti], bkStr: bks, soft: soft });
+        var pl = lerp3(C_PLASTER[0], C_PLASTER[1], plasterN[ti]);
+        var bh = brickH[ti], br = [0.34 + 0.2 * brickId[ti], 0.1 + 0.07 * brickId[ti], 0.07 + 0.04 * brickId[ti]];
+        var brickCol = lerp3(C_MORTAR, br, smooth((bh - 0.1) / 0.3));
+        var col = lerp3(pl, brickCol, w), sh = lerp(vShadePlaster[ti], vShadeBrick[ti], w);
+        var o = (y * VW + x) * 4;
+        p[o] = toByte(srgbOut(clamp01(col[0] * sh))); p[o + 1] = toByte(srgbOut(clamp01(col[1] * sh))); p[o + 2] = toByte(srgbOut(clamp01(col[2] * sh))); p[o + 3] = 255;
+      }
+    }
+    var off = renderVtx.off || (renderVtx.off = document.createElement('canvas')); off.width = VW; off.height = VW; off.getContext('2d').putImageData(img, 0, 0);
+    ctx.imageSmoothingEnabled = true; ctx.drawImage(off, 0, 0, cv.width, cv.height);
+    if ($('vWire').checked) {
+      var s = cv.width / n, rad = Math.max(1.6, Math.min(3.4, 48 / n));
+      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+      if (n <= 24) { for (var g = 0; g <= n; g++) { ctx.beginPath(); ctx.moveTo(g * s, 0); ctx.lineTo(g * s, cv.height); ctx.moveTo(0, g * s); ctx.lineTo(cv.width, g * s); ctx.stroke(); } }
+      for (var jj = 0; jj <= n; jj++) for (var ii = 0; ii <= n; ii++) {
+        var val = v[jj * (n + 1) + ii];
+        ctx.beginPath(); ctx.arc(ii * s, jj * s, rad, 0, Math.PI * 2);
+        var shade = Math.round(255 * (1 - val)); ctx.fillStyle = 'rgb(' + shade + ',' + shade + ',' + shade + ')'; ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.stroke();
+      }
+    }
+  }
+  function ptr(e) { var cv = $('cvVtx'), r = cv.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; }
+  var painting = false;
+  $('cvVtx').addEventListener('pointerdown', function (e) { painting = true; this.setPointerCapture(e.pointerId); var q = ptr(e); paintAt(q[0], q[1]); renderVtx(); });
+  $('cvVtx').addEventListener('pointermove', function (e) { if (!painting) return; var q = ptr(e); paintAt(q[0], q[1]); renderVtx(); });
+  ['pointerup', 'pointercancel'].forEach(function (t) { $('cvVtx').addEventListener(t, function () { painting = false; }); });
+  function setTool(erase) { vtx.erase = erase; $('bPaint').setAttribute('aria-pressed', String(!erase)); $('bErase').setAttribute('aria-pressed', String(erase)); }
+  $('bPaint').addEventListener('click', function () { setTool(false); });
+  $('bErase').addEventListener('click', function () { setTool(true); });
+  $('bClear').addEventListener('click', function () { vtx.v.fill(0); renderVtx(); });
+  $('bSample').addEventListener('click', function () { sampleStroke(); renderVtx(); });
+  $('vGrid').addEventListener('input', function () { newVerts(+this.value); sampleStroke(); renderVtx(); });
+  $('vBrush').addEventListener('input', function () { vtx.brush = +this.value; });
+  $('vStr').addEventListener('input', function () { vtx.str = +this.value; });
+  ['vSoft', 'vHi', 'vBk', 'vmH', 'vmP', 'vWire'].forEach(function (id) { $(id).addEventListener('input', renderVtx); $(id).addEventListener('change', renderVtx); });
+
+  /* ---------- init ---------- */
+  bindOutputs(document);
+  newVerts(+$('vGrid').value); sampleStroke();
+  setLookControls(); readLook(); renderLook(); renderTiles(); renderCurve(); renderStrips(); renderVtx();
+  window.addEventListener('resize', renderCurve);
+  var redraw = function () { renderCurve(); };
+  if (window.matchMedia) { try { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', redraw); } catch (e) { /* older browsers */ } }
+  new MutationObserver(redraw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+})();
+</script>
+
+</body>
+</html>
